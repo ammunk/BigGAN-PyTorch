@@ -9,6 +9,7 @@ import os
 import utils
 import losses
 
+from advas import AdversarysAssistant
 
 # Dummy training function for debugging
 def dummy_training_function():
@@ -17,7 +18,8 @@ def dummy_training_function():
   return train
 
 
-def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
+def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config,
+                          wandbwrapper, reg_strength, ignore_proxy_reg):
   def train(x, y):
     G.optim.zero_grad()
     D.optim.zero_grad()
