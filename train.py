@@ -23,11 +23,32 @@ from torch.nn import Parameter as P
 import torchvision
 
 # Import my stuff
-import inception_utils
-import utils
-import losses
-import train_fns
-from sync_batchnorm import patch_replication_callback
+from . import inception_utils
+from . import utils
+from . import losses
+from . import train_fns
+from .sync_batchnorm import patch_replication_callback
+from . import BigGAN
+
+
+class GeneratorSubstitute():
+  def __init__(self, G, z, y):
+    self.G = G
+    self.z_ = z
+    self.y_ = y
+
+  def sample(self, batch_shape=torch.Size([1])):
+    self.z_.sample_()
+    self.y_.sample_()
+    bs = batch_shape[0]
+    G_z = self.G(self.z_[:bs, :], self.G.shared(self.y_[:bs]))
+    return G_z
+
+  def eval(self):
+    self.G.eval()
+
+  def parameters(self):
+    return self.G.parameters()
 
 # The main training file. Config is a dictionary specifying the configuration
 # of this training run.
@@ -46,8 +67,15 @@ def run(config):
   if config['resume']:
     print('Skipping initialization for training resumption...')
     config['skip_init'] = True
+
+  if config['reg_strength'] != 0:
+    config['batch_size_multiplier'] = 2
+  else:
+    config['batch_size_multiplier'] = 1
+
   config = utils.update_config_roots(config)
   device = 'cuda'
+  wandbwrapper = config['wandbwrapper']
   
   # Seed RNG
   utils.seed_rng(config['seed'])
@@ -59,7 +87,7 @@ def run(config):
   torch.backends.cudnn.benchmark = True
 
   # Import the model--this line allows us to dynamically select different files.
-  model = __import__(config['model'])
+  model = BigGAN
   experiment_name = (config['experiment_name'] if config['experiment_name']
                        else utils.name_from_config(config))
   print('Experiment name is %s' % experiment_name)
@@ -129,7 +157,8 @@ def run(config):
   # Note that at every loader iteration we pass in enough data to complete
   # a full D iteration (regardless of number of D steps and accumulations)
   D_batch_size = (config['batch_size'] * config['num_D_steps']
-                  * config['num_D_accumulations'])
+                  * config['num_D_accumulations']
+                  * config['batch_size_multiplier'])
   loaders = utils.get_data_loaders(**{**config, 'batch_size': D_batch_size,
                                       'start_itr': state_dict['itr']})
 
@@ -149,8 +178,10 @@ def run(config):
   fixed_y.sample_()
   # Loaders are loaded, prepare the training function
   if config['which_train_fn'] == 'GAN':
-    train = train_fns.GAN_training_function(G, D, GD, z_, y_, 
-                                            ema, state_dict, config)
+
+
+    train = train_fns.GAN_training_function(G, D, GD, z_, y_, ema, state_dict,
+                                            config)
   # Else, assume debugging and use the dummy train fn
   else:
     train = train_fns.dummy_training_function()
@@ -183,37 +214,58 @@ def run(config):
         x, y = x.to(device), y.to(device)
       metrics = train(x, y)
       train_log.log(itr=int(state_dict['itr']), **metrics)
-      
-      # Every sv_log_interval, log singular values
-      if (config['sv_log_interval'] > 0) and (not (state_dict['itr'] % config['sv_log_interval'])):
-        train_log.log(itr=int(state_dict['itr']), 
-                      **{**utils.get_SVs(G, 'G'), **utils.get_SVs(D, 'D')})
 
-      # If using my progbar, print metrics.
-      if config['pbar'] == 'mine':
-          print(', '.join(['itr: %d' % state_dict['itr']] 
-                           + ['%s : %+4.3f' % (key, metrics[key])
-                           for key in metrics]), end=' ')
 
-      # Save weights and copies as configured at specified interval
       if not (state_dict['itr'] % config['save_every']):
-        if config['G_eval_mode']:
-          print('Switchin G to eval mode...')
-          G.eval()
-          if config['ema']:
-            G_ema.eval()
-        train_fns.save_and_sample(G, D, G_ema, z_, y_, fixed_z, fixed_y, 
-                                  state_dict, config, experiment_name)
+        part_losses = (metrics['G_loss'], metrics['advas_loss']) if 'advas_loss' in metrics else None
+        wandbwrapper.wandb_update_train(metrics['G_loss'], "generator",
+                                        state_dict['itr'],
+                                        part_losses=part_losses)
 
-      # Test every specified interval
-      if not (state_dict['itr'] % config['test_every']):
-        if config['G_eval_mode']:
-          print('Switchin G to eval mode...')
-          G.eval()
-        train_fns.test(G, D, G_ema, z_, y_, state_dict, config, sample,
-                       get_inception_metrics, experiment_name, test_log)
-    # Increment epoch counter at end of epoch
-    state_dict['epoch'] += 1
+        with torch.no_grad():
+            wandbwrapper.wandb_model_output_gan(GeneratorSubstitute(G, z_, y_),
+                                                [loaders[0].dataset,
+                                                 loaders[0].dataset],
+                                                data_is_image=False,
+                                                nostep=True)
+        wandbwrapper.wandb_update_train(-(metrics['D_loss_real']
+                                          +metrics['D_loss_fake']),
+                                        "proxy", state_dict['itr'])
+        wandbwrapper.save_models([G, D, G_ema], ['generator', 'proxy',
+                                                 'G_moving_average'])
+
+        wandbwrapper.log()
+
+    #   # Every sv_log_interval, log singular values
+    #   if (config['sv_log_interval'] > 0) and (not (state_dict['itr'] % config['sv_log_interval'])):
+    #     train_log.log(itr=int(state_dict['itr']),
+    #                   **{**utils.get_SVs(G, 'G'), **utils.get_SVs(D, 'D')})
+
+    #   # If using my progbar, print metrics.
+    #   if config['pbar'] == 'mine':
+    #       print(', '.join(['itr: %d' % state_dict['itr']]
+    #                        + ['%s : %+4.3f' % (key, metrics[key])
+    #                        for key in metrics]), end=' ')
+
+    #   # Save weights and copies as configured at specified interval
+    #   if not (state_dict['itr'] % config['save_every']):
+    #     if config['G_eval_mode']:
+    #       print('Switchin G to eval mode...')
+    #       G.eval()
+    #       if config['ema']:
+    #         G_ema.eval()
+    #     train_fns.save_and_sample(G, D, G_ema, z_, y_, fixed_z, fixed_y,
+    #                               state_dict, config, experiment_name)
+
+    #   # Test every specified interval
+    #   if not (state_dict['itr'] % config['test_every']):
+    #     if config['G_eval_mode']:
+    #       print('Switchin G to eval mode...')
+    #       G.eval()
+    #     train_fns.test(G, D, G_ema, z_, y_, state_dict, config, sample,
+    #                    get_inception_metrics, experiment_name, test_log)
+    # # Increment epoch counter at end of epoch
+    # state_dict['epoch'] += 1
 
 
 def main():

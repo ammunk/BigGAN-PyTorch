@@ -16,7 +16,7 @@ import datetime
 import json
 import pickle
 from argparse import ArgumentParser
-import animal_hash
+from . import animal_hash
 
 import torch
 import torch.nn as nn
@@ -25,7 +25,7 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
-import datasets as dset
+from . import datasets as dset
 
 def prepare_parser():
   usage = 'Parser for all scripts.'
@@ -359,7 +359,14 @@ def prepare_parser():
     '--sv_log_interval', type=int, default=10,
     help='Iteration interval for logging singular values '
          ' (default: %(default)s)') 
-   
+
+  ### Adversarys Assistant ###
+
+  parser.add_argument(
+    '--reg_strength', type=int, default=0,
+    help='Adversarys assistant strength (set to -1 for a normalized version)'
+         ' (default: %(default)s)')
+
   return parser
 
 # Arguments for sample.py; not presently used in train.py

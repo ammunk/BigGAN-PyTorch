@@ -6,8 +6,9 @@ import torch.nn as nn
 import torchvision
 import os
 
-import utils
-import losses
+from . import utils
+from . import losses
+from .losses import loss_no_hinge_dis
 
 from advas import AdversarysAssistant
 
@@ -18,11 +19,22 @@ def dummy_training_function():
   return train
 
 
-def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config,
-                          wandbwrapper, reg_strength, ignore_proxy_reg):
-  def train(x, y):
+def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
+  reg_strength = config['reg_strength']
+  advas = AdversarysAssistant(reg_strength)
+  additional_metric = {}
+  def train(x, y, advas=advas, additional_metric=additional_metric):
     G.optim.zero_grad()
     D.optim.zero_grad()
+    if reg_strength != 0:
+      bs = x.size(0)
+      x, x_reg = torch.split(x, bs//2)
+      y, y_reg = torch.split(y, bs//2)
+
+      # How many chunks to split x and y into?
+      x_reg = torch.split(x_reg, config['batch_size'])
+      y_reg = torch.split(y_reg, config['batch_size'])
+
     # How many chunks to split x and y into?
     x = torch.split(x, config['batch_size'])
     y = torch.split(y, config['batch_size'])
@@ -65,14 +77,36 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config,
       
     # Zero G's gradients by default before training G, for safety
     G.optim.zero_grad()
-    
+    reg_loss = None
+    counter = 0
     # If accumulating gradients, loop multiple times
     for accumulation_index in range(config['num_G_accumulations']):    
       z_.sample_()
       y_.sample_()
       D_fake = GD(z_, y_, train_G=True, split_D=config['split_D'])
+
       G_loss = losses.generator_loss(D_fake) / float(config['num_G_accumulations'])
-      G_loss.backward()
+
+      # Adversarys assistant
+      if reg_strength == 0:
+        G_loss.backward()
+      elif config['num_G_accumulations'] == 1:
+        D_real = GD.D(x_reg[counter], y_reg[counter])
+        D_loss_real, D_loss_fake = losses.loss_no_hinge_dos(D_fake, D_real)
+        D_loss = D_loss_real + D_loss_fake
+        advas.regularize(GD.D.parameters(),
+                         D_loss*D_real.size(0))
+        advas_loss = advas.aggregrate_grads(D_real.size(0))
+        if reg_strength != -1:
+          (G_loss + advas_loss).backward()
+        else:
+          advas.normalized_backward(GD.G.parameters(), G_loss, advas_loss)
+        additional_metric = {'advas_loss': advas_loss.item()}
+      else:
+        raise ValueError("Either turn off adversarys assistant or "
+                         + "set accumulations to 1")
+      counter += 1
+
     
     # Optionally apply modified ortho reg in G
     if config['G_ortho'] > 0.0:
@@ -87,9 +121,11 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config,
       ema.update(state_dict['itr'])
     
     out = {'G_loss': float(G_loss.item()), 
-            'D_loss_real': float(D_loss_real.item()),
-            'D_loss_fake': float(D_loss_fake.item())}
+           'D_loss_real': float(D_loss_real.item()),
+           'D_loss_fake': float(D_loss_fake.item())}
+    out.update(additional_metric)
     # Return G's loss and the components of D's loss.
+
     return out
   return train
   
