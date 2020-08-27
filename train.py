@@ -62,7 +62,7 @@ def get_images_names(G, G_ema, dataset):
 
 def do_metric(dataset, iteration):
     epoch_size = len(dataset)
-    do_large_metric = iteration % epoch_size if iteration > 0 else False
+    do_large_metric = (iteration % epoch_size == 0) if iteration > 0 else False
     if iteration < epoch_size:
         do_small_metric = iteration == 0 or math.log2(iteration) % 1 == 0
     else:
@@ -294,7 +294,7 @@ def run(config):
                                     label='generator')
             updated_metrics = True
 
-        if updated_metrics or iteration % 500:
+        if updated_metrics or (iteration % 500 == 0):
             wandbwrapper.track_summary_stats(Gsub, loaders[0].dataset)
             images, image_names = get_images_names(Gsub, Gemasub,
                                                    loaders[0].dataset)
@@ -303,7 +303,7 @@ def run(config):
                                                     'G_moving_average'])
             updated_metrics = True
 
-        if updated_metrics or iteration % 50:
+        if updated_metrics or (iteration % 50 == 0):
             wandbwrapper.track_loss(loss, 'generator', iteration,
                                     part_losses=part_losses)
             wandbwrapper.track_loss(-(metrics['D_loss_real']
