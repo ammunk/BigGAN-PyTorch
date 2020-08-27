@@ -67,7 +67,7 @@ def do_metric(dataset, iteration):
         do_small_metric = iteration == 0 or math.log2(iteration) % 1 == 0
     else:
         do_small_metric = False
-    return do_small_metric or iteration % epoch_size, do_large_metric
+    return do_small_metric or (iteration % epoch_size == 0), do_large_metric
 
 
 class GeneratorSubstitute():
@@ -277,6 +277,10 @@ def run(config):
       with torch.no_grad():
         Gsub = GeneratorSubstitute(G, z_, y_, fixed_z, fixed_y)
         Gemasub = GeneratorSubstitute(G_ema, z_, y_, fixed_z, fixed_y)
+        print(do_small_metric, iteration)
+        print(do_small_metric, iteration)
+        print(do_small_metric, iteration)
+        print(do_small_metric, iteration)
         if do_small_metric:
             wandbwrapper.fid_score(Gsub, loaders[0].dataset,
                                    N=int(1e3))
