@@ -31,7 +31,7 @@ from .sync_batchnorm import patch_replication_callback
 from . import BigGAN
 
 
-def _get_images_names(G, G_ema, dataset):
+def get_images_names(G, G_ema, dataset):
     G.eval()
     G_ema.eval()
     fake_images = G.sample(torch.Size([3])).cpu()
@@ -83,7 +83,9 @@ class GeneratorSubstitute():
     self.y_.sample_()
     bs = batch_shape[0]
     if bs > self.z_.size(0):
-      raise ValueError("specified batch_size bigger than latent variable")
+      print("specified batch_size bigger than latent variable"
+            " - reducing the batchsize")
+      bs = self.z_.size(0)
     G_z = self.G(self.z_[:bs, :], self.G.shared(self.y_[:bs]))
     return G_z
 
@@ -94,7 +96,9 @@ class GeneratorSubstitute():
     return self.G.parameters()
 
   def get_fixed(self):
-    return self.G(self.fixed_z[:3, :], self.G.shared(self.fixed_y[:3]))
+    bs = min(3, self.fixed_z.size(0))
+    return self.G(self.fixed_z[:bs, :],
+                  self.G.shared(self.fixed_y[:bs]))
 
 # The main training file. Config is a dictionary specifying the configuration
 # of this training run.
@@ -262,67 +266,52 @@ def run(config):
       train_log.log(itr=int(state_dict['itr']), **metrics)
 
 
+      iteration = state_dict['itr']
       do_small_metric, do_large_metric = do_metric(loaders[0].dataset,
                                                    iteration)
-      if not (state_dict['itr'] % config['save_every']):
-        part_losses = (metrics['G_loss'], metrics['advas_loss']) if 'advas_loss' in metrics else None
-        proxy_loss = -(metrics['D_loss_real'] +metrics['D_loss_fake'])
-        loss = metrics['G_loss']
-        iteration = state_dict['itr']
-        G.eval()
-        with torch.no_grad():
-          Gsub = GeneratorSubstitute(G, z_, y_, fixed_z, fixed_y)
-          Gsub = GeneratorSubstitute(G_ema, z_, y_, fixed_z, fixed_y)
-          if do_small_metric:
-              wandbwrapper.fid_score(self.generator, self.datasets[0],
-                                     N=int(1e3))
-              wandbwrapper.inception_score(self.generator, N=int(1e3))
-              wandbwrapper.swd_metric(self.generator, self.datasets[0],
-                                            N=int(1e3))
+      part_losses = (metrics['G_loss'], metrics['advas_loss']) if 'advas_loss' in metrics else None
+      proxy_loss = -(metrics['D_loss_real'] + metrics['D_loss_fake'])
+      loss = metrics['G_loss']
+      G.eval()
+      updated_metrics = False
+      with torch.no_grad():
+        Gsub = GeneratorSubstitute(G, z_, y_, fixed_z, fixed_y)
+        Gemasub = GeneratorSubstitute(G_ema, z_, y_, fixed_z, fixed_y)
+        if do_small_metric:
+            wandbwrapper.fid_score(Gsub, loaders[0].dataset,
+                                   N=int(1e3))
+            wandbwrapper.inception_score(Gsub, N=int(1e3))
+            wandbwrapper.swd_metric(Gsub, loaders[0].dataset,
+                                    N=int(1e3))
+            updated_metrics = True
+        if do_large_metric:
+            wandbwrapper.fid_score(Gsub, loaders[0].dataset,
+                                   N=len(loaders[0].dataset),
+                                   label='generator')
+            wandbwrapper.inception_score(Gsub, label='generator')
+            wandbwrapper.swd_metric(Gsub, loaders[0].dataset,
+                                    N=len(loaders[0].dataset),
+                                    label='generator')
+            updated_metrics = True
 
-              wandbwrapper.track_loss(loss, 'generator', iteration,
-                                            part_losses=part_losses)
-              wandbwrapper.track_loss(-(metrics['D_loss_real']
-                                        + metrics['D_loss_fake']),
-                                      "proxy")
-          if ((iteration < 500 if do_small_metric else iteration % 500) or
-              do_large_metric):
-              wandbwrapper.track_summary_stats(Gsub,
-                                               loaders[0].dataset)
-              images, image_names = get_images_names(Gsub, G_emasub,
-                                                     loaders[0].dataset)
-              wandbwrapper.add_images(images, image_names)
-              wandbwrapper.track_loss(loss, 'generator', iteration,
-                                            part_losses=part_losses)
-              wandbwrapper.track_loss(-(metrics['D_loss_real']
-                                        + metrics['D_loss_fake']),
-                                      "proxy")
-              wandbwrapper.save_models([G, D, G_ema], ['generator', 'proxy',
-                                                       'G_moving_average'])
-          if ((iteration < 50 if do_small_metric else iteration % 50)
-              or do_large_metric):
-              wandbwrapper.track_loss(loss, 'generator', iteration,
-                                            part_losses=part_losses)
-              wandbwrapper.track_loss(-(metrics['D_loss_real']
-                                        + metrics['D_loss_fake']),
-                                      "proxy")
-          if do_large_metric:
-            self.wandbwrapper.fid_score(Gsub,
-                                        loaders[0].dataset,
-                                        N=len(loaders[0].dataset),
-                                        label='generator')
-            self.wandbwrapper.inception_score(Gsub,
-                                              label='generator'))
-            self.wandbwrapper.swd_metric(Gsub,
-                                         loaders[0].dataset,
-                                         N=len(loaders[0].dataset),
-                                         label='generator'))
+        if updated_metrics or iteration % 500:
+            wandbwrapper.track_summary_stats(Gsub, loaders[0].dataset)
+            images, image_names = get_images_names(Gsub, Gemasub,
+                                                   loaders[0].dataset)
+            wandbwrapper.add_images(images, image_names)
+            wandbwrapper.save_models([G, D, G_ema], ['generator', 'proxy',
+                                                    'G_moving_average'])
+            updated_metrics = True
 
-            self.wandbwrapper.track_loss(loss, 'generator', iteration,
-                                         part_losses=part_losses)
-
-
-        wandbwrapper.log()
+        if updated_metrics or iteration % 50:
+            wandbwrapper.track_loss(loss, 'generator', iteration,
+                                    part_losses=part_losses)
+            wandbwrapper.track_loss(-(metrics['D_loss_real']
+                                    + metrics['D_loss_fake']),
+                                    "proxy")
+            updated_metrics = True
+        if updated_metrics:
+            wandbwrapper.log()
 
     #   # Every sv_log_interval, log singular values
     #   if (config['sv_log_interval'] > 0) and (not (state_dict['itr'] % config['sv_log_interval'])):
