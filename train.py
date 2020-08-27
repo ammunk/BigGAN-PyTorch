@@ -277,10 +277,6 @@ def run(config):
       with torch.no_grad():
         Gsub = GeneratorSubstitute(G, z_, y_, fixed_z, fixed_y)
         Gemasub = GeneratorSubstitute(G_ema, z_, y_, fixed_z, fixed_y)
-        print(do_small_metric, iteration)
-        print(do_small_metric, iteration)
-        print(do_small_metric, iteration)
-        print(do_small_metric, iteration)
         if do_small_metric:
             wandbwrapper.fid_score(Gsub, loaders[0].dataset,
                                    N=int(1e3))
@@ -302,9 +298,9 @@ def run(config):
             wandbwrapper.track_summary_stats(Gsub, loaders[0].dataset)
             images, image_names = get_images_names(Gsub, Gemasub,
                                                    loaders[0].dataset)
-            wandbwrapper.add_images(images, image_names)
+            wandbwrapper.add_images(images, image_names, iteration=iteration)
             wandbwrapper.save_models([G, D, G_ema], ['generator', 'proxy',
-                                                    'G_moving_average'])
+                                                     'G_moving_average'])
             updated_metrics = True
 
         if updated_metrics or (iteration % 50 == 0):
