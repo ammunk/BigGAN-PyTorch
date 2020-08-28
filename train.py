@@ -186,7 +186,7 @@ def run(config):
 
   # If resuming a run (from Weight and Biasses)
   if config['loaded_objects'] is not None:
-    fixed_z, fixed_y = utils.load_objects(G, D, G_ema,
+    fixed_z, fixed_y = utils.load_objects(G, D, state_dict, G_ema,
                                           config['loaded_objects'])
   else:
     fixed_z, fixed_y = None, None
@@ -312,7 +312,11 @@ def run(config):
             images, image_names = get_images_names(Gsub, Gemasub,
                                                    loaders[0].dataset)
             wandbwrapper.add_images(images, image_names, iteration=iteration)
-            objects_to_save, objects_name = utils.get_objects_to_save()
+            objects_to_save, objects_name = utils.get_objects_to_save(G, D,
+                                                                      state_dict,
+                                                                      G_ema,
+                                                                      fixed_z,
+                                                                      fixed_y)
             wandbwrapper.save_objects(objects_to_save, objects_name)
             updated_metrics = True
 

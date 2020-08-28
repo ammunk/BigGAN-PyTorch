@@ -746,12 +746,13 @@ def load_weights(G, D, state_dict, weights_root, experiment_name,
       strict=strict)
 
 def load_objects(G, D, state_dict, G_ema, loaded_objects):
+  print("Updating setting from previous run")
   G.load_state_dict(loaded_objects['G'])
   D.load_state_dict(loaded_objects['D'])
   G.optim.load_state_dict(loaded_objects['G_opt'])
   D.optim.load_state_dict(loaded_objects['D_opt'])
-  for item in state_dict:
-    state_dict[item] = loaded_objects['state_dict'][item]
+  for key, value in loaded_objects['state_dict'].items():
+    state_dict[key] = value
 
   if G_ema is not None:
     if 'G_ema' not in loaded_objects:
@@ -760,17 +761,21 @@ def load_objects(G, D, state_dict, G_ema, loaded_objects):
       G_ema.load_state_dict(loaded_objects['G_ema'])
   fixed_z = loaded_objects['fixed_z']
   fixed_y = loaded_objects['fixed_y']
+  print("Finished updating setting from previous run")
   return fixed_z, fixed_y
 
 
 def get_objects_to_save(G, D, state_dict, G_ema, fixed_z, fixed_y):
-  objects_to_save = [G, D, G.optim, D.optim, fixed_z, fixed_y, state_dict,
+  tmp_state_dict = {key: value for key, value in state_dict.items()
+                    if key != "config"}
+  objects_to_save = [G, D, G.optim, D.optim, fixed_z, fixed_y, tmp_state_dict,
                      state_dict['itr'], state_dict['running_time']]
   objects_name = ['G', 'D', 'G_opt', 'D_opt',
                   'fixed_z', 'fixed_y', 'state_dict', 'iteration',
                   'running_time']
+
   if G_ema is not None:
-    objcets_to_save += [G_ema]
+    objects_to_save += [G_ema]
     objects_name += ['G_ema']
   return objects_to_save, objects_name
 
