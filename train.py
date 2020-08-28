@@ -8,6 +8,7 @@
 """
 
 import os
+import time
 import functools
 import math
 import numpy as np
@@ -172,7 +173,8 @@ def run(config):
     *[sum([p.data.nelement() for p in net.parameters()]) for net in [G,D]]))
   # Prepare state dict, which holds things like epoch # and itr #
   state_dict = {'itr': 0, 'epoch': 0, 'save_num': 0, 'save_best_num': 0,
-                'best_IS': 0, 'best_FID': 999999, 'config': config}
+                'running_time': 0, 'best_IS': 0, 'best_FID': 999999,
+                'config': config}
 
   # If loading from a pre-trained model, load weights
   if config['resume']:
@@ -181,6 +183,13 @@ def run(config):
                        config['weights_root'], experiment_name, 
                        config['load_weights'] if config['load_weights'] else None,
                        G_ema if config['ema'] else None)
+
+  # If resuming a run (from Weight and Biasses)
+  if config['loaded_objects'] is not None:
+    fixed_z, fixed_y = utils.load_objects(G, D, G_ema,
+                                          config['loaded_objects'])
+  else:
+    fixed_z, fixed_y = None, None
 
   # If parallel, parallelize the GD module
   if config['parallel']:
@@ -221,11 +230,12 @@ def run(config):
   z_, y_ = utils.prepare_z_y(G_batch_size, G.dim_z, config['n_classes'],
                              device=device, fp16=config['G_fp16'])
   # Prepare a fixed z & y to see individual sample evolution throghout training
-  fixed_z, fixed_y = utils.prepare_z_y(G_batch_size, G.dim_z,
-                                       config['n_classes'], device=device,
-                                       fp16=config['G_fp16'])  
-  fixed_z.sample_()
-  fixed_y.sample_()
+  if fixed_z is None or fixed_y is None:
+    fixed_z, fixed_y = utils.prepare_z_y(G_batch_size, G.dim_z,
+                                         config['n_classes'], device=device,
+                                         fp16=config['G_fp16'])
+    fixed_z.sample_()
+    fixed_y.sample_()
   # Loaders are loaded, prepare the training function
   if config['which_train_fn'] == 'GAN':
 
@@ -250,6 +260,8 @@ def run(config):
     else:
       pbar = tqdm(loaders[0])
     for i, (x, y) in enumerate(pbar):
+
+      start_time = time.time()
       # Increment the iteration counter
       state_dict['itr'] += 1
       # Make sure G and D are in training mode, just in case they got set to eval
@@ -263,6 +275,7 @@ def run(config):
       else:
         x, y = x.to(device), y.to(device)
       metrics = train(x, y)
+      state_dict['running_time'] += time.time() - start_time
       train_log.log(itr=int(state_dict['itr']), **metrics)
 
 
@@ -299,19 +312,19 @@ def run(config):
             images, image_names = get_images_names(Gsub, Gemasub,
                                                    loaders[0].dataset)
             wandbwrapper.add_images(images, image_names, iteration=iteration)
-            wandbwrapper.save_models([G, D, G_ema], ['generator', 'proxy',
-                                                     'G_moving_average'])
+            objects_to_save, objects_name = utils.get_objects_to_save()
+            wandbwrapper.save_objects(objects_to_save, objects_name)
             updated_metrics = True
 
         if updated_metrics or (iteration % 50 == 0):
-            wandbwrapper.track_loss(loss, 'generator', iteration,
+            wandbwrapper.track_loss(loss, 'generator',
                                     part_losses=part_losses)
             wandbwrapper.track_loss(-(metrics['D_loss_real']
                                     + metrics['D_loss_fake']),
                                     "proxy")
             updated_metrics = True
         if updated_metrics:
-            wandbwrapper.log()
+            wandbwrapper.log(iteration, state_dict['running_time'])
 
     #   # Every sv_log_interval, log singular values
     #   if (config['sv_log_interval'] > 0) and (not (state_dict['itr'] % config['sv_log_interval'])):

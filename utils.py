@@ -745,6 +745,35 @@ def load_weights(G, D, state_dict, weights_root, experiment_name,
       torch.load('%s/%s.pth' % (root, join_strings('_', ['G_ema', name_suffix]))),
       strict=strict)
 
+def load_objects(G, D, state_dict, G_ema, loaded_objects):
+  G.load_state_dict(loaded_objects['G'])
+  D.load_state_dict(loaded_objects['D'])
+  G.optim.load_state_dict(loaded_objects['G_opt'])
+  D.optim.load_state_dict(loaded_objects['D_opt'])
+  for item in state_dict:
+    state_dict[item] = loaded_objects['state_dict'][item]
+
+  if G_ema is not None:
+    if 'G_ema' not in loaded_objects:
+      raise KeyError("Trying to load G_ema but it is not in this run")
+    else:
+      G_ema.load_state_dict(loaded_objects['G_ema'])
+  fixed_z = loaded_objects['fixed_z']
+  fixed_y = loaded_objects['fixed_y']
+  return fixed_z, fixed_y
+
+
+def get_objects_to_save(G, D, state_dict, G_ema, fixed_z, fixed_y):
+  objects_to_save = [G, D, G.optim, D.optim, fixed_z, fixed_y, state_dict,
+                     state_dict['itr'], state_dict['running_time']]
+  objects_name = ['G', 'D', 'G_opt', 'D_opt',
+                  'fixed_z', 'fixed_y', 'state_dict', 'iteration',
+                  'running_time']
+  if G_ema is not None:
+    objcets_to_save += [G_ema]
+    objects_name += ['G_ema']
+  return objects_to_save, objects_name
+
 
 ''' MetricsLogger originally stolen from VoxNet source code.
     Used for logging inception metrics'''
