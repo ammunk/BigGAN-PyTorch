@@ -97,10 +97,14 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
         advas.regularize(GD.D.parameters(),
                          D_loss*D_real.size(0))
         advas_loss = advas.aggregrate_grads(D_real.size(0))
-        if reg_strength != -1:
-          (G_loss + advas_loss).backward()
+        if reg_strength == -1:
+          advas.normalized_backward(GD.G.parameters(), G_loss, advas_loss,
+                                    retain_first_graph=True)
+        elif reg_strength == -2:
+          advas.normalized_advas_backward(GD.G.parameters(), G_loss, advas_loss,
+                                          retain_first_graph=True)
         else:
-          advas.normalized_backward(GD.G.parameters(), G_loss, advas_loss)
+          (G_loss + advas_loss).backward()
         additional_metric = {'advas_loss': advas_loss.item()}
       else:
         raise ValueError("Either turn off adversarys assistant or "

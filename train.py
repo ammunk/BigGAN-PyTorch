@@ -61,14 +61,13 @@ def get_images_names(G, G_ema, dataset):
                     + ['real'])
 
 
-def do_metric(dataset, iteration):
-    epoch_size = len(dataset)
-    do_large_metric = (iteration % epoch_size == 0) if iteration > 0 else False
-    if iteration < epoch_size:
-        do_small_metric = iteration == 0 or math.log2(iteration) % 1 == 0
-    else:
-        do_small_metric = False
-    return do_small_metric or (iteration % epoch_size == 0), do_large_metric
+def do_metric(iterations_per_epoch, iteration):
+  do_large_metric = (iteration % (5*iterations_per_epoch) == 0) if iteration > 0 else False
+  if iteration < iterations_per_epoch:
+      do_small_metric = iteration <= 1 or (math.log2(iteration) % 1 == 0)
+  else:
+      do_small_metric = False
+  return do_small_metric or (iteration % iterations_per_epoch == 0), do_large_metric
 
 
 class GeneratorSubstitute():
@@ -280,7 +279,7 @@ def run(config):
 
 
       iteration = state_dict['itr']
-      do_small_metric, do_large_metric = do_metric(loaders[0].dataset,
+      do_small_metric, do_large_metric = do_metric(len(loaders[0]),
                                                    iteration)
       part_losses = (metrics['G_loss'], metrics['advas_loss']) if 'advas_loss' in metrics else None
       proxy_loss = -(metrics['D_loss_real'] + metrics['D_loss_fake'])
@@ -292,19 +291,28 @@ def run(config):
         Gemasub = GeneratorSubstitute(G_ema, z_, y_, fixed_z, fixed_y)
         if do_small_metric:
             wandbwrapper.fid_score(Gsub, loaders[0].dataset,
-                                   N=int(1e3))
-            wandbwrapper.inception_score(Gsub, N=int(1e3))
+                                   N=int(1e3), label='small')
+            wandbwrapper.inception_score(Gsub, N=int(1e3), label='small')
             wandbwrapper.swd_metric(Gsub, loaders[0].dataset,
-                                    N=int(1e3))
+                                    N=int(1e3), label='small')
+            wandbwrapper.fid_score(Gemasub, loaders[0].dataset,
+                                   N=int(1e3), label='small-ema')
+            wandbwrapper.inception_score(Gemasub, N=int(1e3), label='small-ema')
+            wandbwrapper.swd_metric(Gemasub, loaders[0].dataset,
+                                    N=int(1e3), label='small-ema')
             updated_metrics = True
         if do_large_metric:
             wandbwrapper.fid_score(Gsub, loaders[0].dataset,
                                    N=len(loaders[0].dataset),
-                                   label='generator')
-            wandbwrapper.inception_score(Gsub, label='generator')
-            wandbwrapper.swd_metric(Gsub, loaders[0].dataset,
-                                    N=len(loaders[0].dataset),
-                                    label='generator')
+                                   label='large')
+            wandbwrapper.inception_score(Gsub, label='large')
+            wandbwrapper.swd_metric(Gemasub, loaders[0].dataset,
+             wandbwrapper.fid_score(Gemasub, loaders[0].dataset,
+                                   N=len(loaders[0].dataset),
+                                   label='large-ema')
+            wandbwrapper.inception_score(Gsub, label='large-ema')
+            wandbwrapper.swd_metric(Gemasub, loaders[0].dataset,
+                                    N=16384, label='large-ema')                                   N=16384, label='large')
             updated_metrics = True
 
         if updated_metrics or (iteration % 500 == 0):
