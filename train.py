@@ -251,8 +251,23 @@ def run(config):
                               z_=z_, y_=y_, config=config)
 
   print('Beginning training at epoch %d...' % state_dict['epoch'])
-  # Train for specified number of epochs, although we mostly track G iterations.
-  for epoch in range(state_dict['epoch'], config['num_epochs']):    
+  Train for specified number of epochs, although we mostly track G iterations.
+  Gsub = GeneratorSubstitute(G, z_, y_, fixed_z, fixed_y)
+  Gemasub = GeneratorSubstitute(G_ema, z_, y_, fixed_z, fixed_y)
+  wandbwrapper.fid_score(Gsub, loaders[0].dataset,
+                            N=int(1e3), label='small')
+  wandbwrapper.inception_score(Gsub, N=int(1e3), label='small')
+  wandbwrapper.swd_metric(Gsub, loaders[0].dataset,
+                            N=int(1e3), label='small')
+  wandbwrapper.fid_score(Gemasub, loaders[0].dataset,
+                            N=int(1e3), label='small-ema')
+  wandbwrapper.inception_score(Gemasub, N=int(1e3), label='small-ema')
+  wandbwrapper.swd_metric(Gemasub, loaders[0].dataset,
+                            N=int(1e3), label='small-ema')
+  wandbwrapper.log(0, 0.)
+
+  for epoch in range(state_dict['epoch'], config['num_epochs']):
+
     # Which progressbar to use? TQDM or my own?
     if config['pbar'] == 'mine':
       pbar = utils.progress(loaders[0],displaytype='s1k' if config['use_multiepoch_sampler'] else 'eta')

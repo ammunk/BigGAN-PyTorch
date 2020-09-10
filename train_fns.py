@@ -109,8 +109,6 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
         else:
           (G_loss + advas_loss).backward()
         additional_metric = {'advas_loss': advas_loss.item()}
-        if config['toggle_grads']:
-          utils.toggle_grad(D, False)
       else:
         raise ValueError("Either turn off adversarys assistant or "
                          + "set accumulations to 1")
