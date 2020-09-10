@@ -93,7 +93,6 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
       if reg_strength == 0:
         G_loss.backward()
       elif config['num_G_accumulations'] == 1:
-        print(x_reg)
         D_real = GD.D(x_reg[counter], y_reg[counter])
         D_loss_real, D_loss_fake = losses.loss_no_hinge_dis(D_fake, D_real)
         D_loss = D_loss_real + D_loss_fake
