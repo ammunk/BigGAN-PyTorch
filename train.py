@@ -307,12 +307,13 @@ def run(config):
                                    label='large')
             wandbwrapper.inception_score(Gsub, label='large')
             wandbwrapper.swd_metric(Gemasub, loaders[0].dataset,
-             wandbwrapper.fid_score(Gemasub, loaders[0].dataset,
+                                    N=16384, label='large')
+            wandbwrapper.fid_score(Gemasub, loaders[0].dataset,
                                    N=len(loaders[0].dataset),
                                    label='large-ema')
             wandbwrapper.inception_score(Gsub, label='large-ema')
             wandbwrapper.swd_metric(Gemasub, loaders[0].dataset,
-                                    N=16384, label='large-ema')                                   N=16384, label='large')
+                                    N=16384, label='large-ema')
             updated_metrics = True
 
         if updated_metrics or (iteration % 500 == 0):
