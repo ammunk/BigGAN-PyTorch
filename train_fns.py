@@ -51,9 +51,9 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
       for accumulation_index in range(config['num_D_accumulations']):
         z_.sample_()
         y_.sample_()
-        D_fake, D_real = GD(z_[:config['batch_size']], y_[:config['batch_size']], 
-                            x[counter], y[counter], train_G=False, 
-                            split_D=config['split_D'])
+        D_fake, D_real = GD(z_[:config['batch_size']],
+                            y_[:config['batch_size']], x[counter], y[counter],
+                            train_G=False, split_D=config['split_D'])
 
         # Compute components of D's loss, average them, and divide by
         # the number of gradient accumulations
@@ -85,36 +85,36 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
 
       z_.sample_()
       y_.sample_()
-      D_fake = GD(z_, y_, train_G=True, split_D=config['split_D'])
+      D_fake = GD(z_[:config['batch_size']], y_[:config['batch_size']],
+                  train_G=True,
+                  split_D=config['split_D'])
 
       G_loss = losses.generator_loss(D_fake) / float(config['num_G_accumulations'])
 
       # Adversarys assistant
       if reg_strength == 0:
         G_loss.backward()
-      elif config['num_G_accumulations'] == 1:
+      else:
         D_real = GD.D(x_reg[counter], y_reg[counter])
         D_loss_real, D_loss_fake = losses.loss_no_hinge_dis(D_fake, D_real)
         D_loss = D_loss_real + D_loss_fake
         advas.regularize(GD.D.parameters(),
-                         D_loss*D_real.size(0))
-
-        advas_loss = advas.aggregate_grads(D_real.size(0))
-        if reg_strength == -1:
-          advas.normalized_backward(G.parameters(), G_loss,
-                                    advas_loss, retain_first_graph=True)
-        elif reg_strength == -2:
-          advas.normalized_advas_backward(G.parameters(), G_loss,
-                                          advas_loss, retain_first_graph=True)
-        else:
-          (G_loss + advas_loss).backward()
-        additional_metric = {'advas_loss': advas_loss.item()}
-      else:
-        raise ValueError("Either turn off adversarys assistant or "
-                         + "set accumulations to 1")
+                         D_loss)
       counter += 1
 
-    
+    if reg_strength != 0:
+      advas_loss = advas.aggregate_grads(div=float(config['num_G_accumulations']))
+      if reg_strength == -1:
+        advas.normalized_backward(G.parameters(), G_loss,
+                                  advas_loss, retain_first_graph=True)
+      elif reg_strength == -2:
+        advas.normalized_advas_backward(G.parameters(), G_loss,
+                                        advas_loss, retain_first_graph=True)
+      else:
+        (G_loss + advas_loss).backward()
+      additional_metric = {'advas_loss': advas_loss.item()}
+
+
     # Optionally apply modified ortho reg in G
     if config['G_ortho'] > 0.0:
       print('using modified ortho reg in G') # Debug print to indicate we're using ortho reg in G
