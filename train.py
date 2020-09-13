@@ -265,6 +265,10 @@ def run(config):
     wandbwrapper.inception_score(Gemasub, N=int(1e3), label='small-ema')
     wandbwrapper.swd_metric(Gemasub, loaders[0].dataset,
                                 N=int(1e3), label='small-ema')
+
+    images, image_names = get_images_names(Gsub, Gemasub,
+                                           loaders[0].dataset)
+    wandbwrapper.add_images(images, image_names, iteration=iteration)
     wandbwrapper.log(0, 0.)
 
   # Train for specified number of epochs, although we mostly track G iterations.
