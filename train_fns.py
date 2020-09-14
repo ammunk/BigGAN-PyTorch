@@ -10,7 +10,7 @@ from . import utils
 from . import losses
 from .losses import loss_no_hinge_dis
 
-from advas import AdversarysAssistant
+from advas import AdversarysAssistantSup
 
 # Dummy training function for debugging
 def dummy_training_function():
@@ -21,7 +21,7 @@ def dummy_training_function():
 
 def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
   reg_strength = config['reg_strength']
-  advas = AdversarysAssistant(1 if reg_strength < 0 else reg_strength)
+  advas = AdversarysAssistantSup(1. if reg_strength < 0 else reg_strength)
   additional_metric = {}
   def train(x, y, advas=advas, additional_metric=additional_metric):
     G.optim.zero_grad()
@@ -44,7 +44,11 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
     if config['toggle_grads']:
       utils.toggle_grad(D, True)
       utils.toggle_grad(G, False)
-      
+
+    advas_loss_tracker = 0.
+    G_loss_tracker = 0.
+    D_loss_real_tracker = 0.
+    D_loss_fake_tracker = 0.
     for step_index in range(config['num_D_steps']):
       # If accumulating gradients, loop multiple times before an optimizer step
       D.optim.zero_grad()
@@ -60,6 +64,8 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
         D_loss_real, D_loss_fake = losses.discriminator_loss(D_fake, D_real)
         D_loss = (D_loss_real + D_loss_fake) / float(config['num_D_accumulations'])
         D_loss.backward()
+        D_loss_real_tracker += D_loss_real.detach().item()
+        D_loss_fake_tracker += D_loss_fake.detach().item()
         counter += 1
         
       # Optionally apply ortho reg in D
@@ -98,21 +104,23 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
         D_real = GD.D(x_reg[counter], y_reg[counter])
         D_loss_real, D_loss_fake = losses.loss_no_hinge_dis(D_fake, D_real)
         D_loss = D_loss_real + D_loss_fake
-        advas.regularize(GD.D.parameters(),
-                         D_loss)
-      counter += 1
+        args = (GD.G.parameters(), GD.D.parameters(), G_loss, D_loss)
+        kwargs = {'retain_first_graph': True,
+                  'div': float(config['num_G_accumulations'])}
+        if reg_strength == -1:
+          advas_loss = advas.normalized_backward(*args, **kwargs)
+        elif reg_strength == -2:
+          advas_loss = advas.normalized_backward(*args, **kwargs)
 
-    if reg_strength != 0:
-      advas_loss = advas.aggregate_grads(div=float(config['num_G_accumulations']))
-      if reg_strength == -1:
-        advas.normalized_backward(G.parameters(), G_loss,
-                                  advas_loss, retain_first_graph=True)
-      elif reg_strength == -2:
-        advas.normalized_advas_backward(G.parameters(), G_loss,
-                                        advas_loss, retain_first_graph=True)
-      else:
-        (G_loss + advas_loss).backward()
-      additional_metric = {'advas_loss': advas_loss.item()}
+        else:
+          advas_loss = advas.backward(GD.D.parameters(), G_loss, D_loss,
+                                      div=float(config['num_G_accumulations']))
+        counter += 1
+        advas_loss_tracker += advas_loss.detach().item()
+      G_loss_tracker += G_loss.detach().item()
+
+    additional_metric = {'advas_loss': advas_loss_tracker}
+    advas.normalize_grads()
 
 
     # Optionally apply modified ortho reg in G
@@ -127,9 +135,10 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
     if config['ema']:
       ema.update(state_dict['itr'])
     
-    out = {'G_loss': float(G_loss.item()), 
-           'D_loss_real': float(D_loss_real.item()),
-           'D_loss_fake': float(D_loss_fake.item())}
+    out = {'G_loss': float(G_loss_tracker),
+           'D_loss_real': float(D_loss_real_tracker),
+           'D_loss_fake': float(D_loss_fake_tracker),
+           'advas_normalizer': advas.normalizer}
     out.update(additional_metric)
     # Return G's loss and the components of D's loss.
 

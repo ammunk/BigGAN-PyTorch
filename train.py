@@ -356,7 +356,10 @@ def run(config):
             wandbwrapper.track_loss(-(metrics['D_loss_real']
                                     + metrics['D_loss_fake']),
                                     "proxy")
+            wandbwrapper.wandb.log({'advas_normalizer':
+                                    metrics['advas_normalizer']}, commit=False)
             updated_metrics = True
+
         if updated_metrics:
             wandbwrapper.log(iteration, state_dict['running_time'])
 
