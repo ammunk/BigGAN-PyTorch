@@ -62,12 +62,12 @@ def get_images_names(G, G_ema, dataset):
 
 
 def do_metric(iterations_per_epoch, iteration):
-  do_large_metric = (iteration % (5*iterations_per_epoch) == 0) if iteration > 0 else False
+  do_large_metric = (iteration % (50*iterations_per_epoch) == 0) if iteration > 0 else False
   if iteration < iterations_per_epoch:
       do_small_metric = iteration <= 1 or (math.log2(iteration) % 1 == 0)
   else:
       do_small_metric = False
-  return do_small_metric or (iteration % iterations_per_epoch == 0), do_large_metric
+  return do_small_metric or (iteration % 10*iterations_per_epoch == 0), do_large_metric
 
 
 class GeneratorSubstitute():
@@ -337,7 +337,7 @@ def run(config):
                                     N=16384, label='large-ema')
             updated_metrics = True
 
-        if updated_metrics or (iteration % 500 == 0):
+        if updated_metrics:
             wandbwrapper.track_summary_stats(Gsub, loaders[0].dataset)
             images, image_names = get_images_names(Gsub, Gemasub,
                                                    loaders[0].dataset)
