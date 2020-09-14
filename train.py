@@ -268,7 +268,7 @@ def run(config):
 
     images, image_names = get_images_names(Gsub, Gemasub,
                                            loaders[0].dataset)
-    wandbwrapper.add_images(images, image_names, iteration=iteration)
+    wandbwrapper.add_images(images, image_names, iteration=0)
     wandbwrapper.log(0, 0.)
 
   # Train for specified number of epochs, although we mostly track G iterations.
