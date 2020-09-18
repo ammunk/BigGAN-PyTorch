@@ -110,7 +110,7 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
         if reg_strength == -1:
           advas_loss = advas.normalized_backward(*args, **kwargs)
         elif reg_strength == -2:
-          advas_loss = advas.normalized_backward(*args, **kwargs)
+          advas_loss = advas.advas_normalized_backward(*args, **kwargs)
 
         else:
           advas_loss = advas.backward(GD.D.parameters(), G_loss, D_loss,
