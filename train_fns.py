@@ -21,9 +21,10 @@ def dummy_training_function():
 
 def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
   reg_strength = config['reg_strength']
-  advas = AdversarysAssistantSup(1. if reg_strength < 0 else reg_strength)
   additional_metric = {}
-  def train(x, y, advas=advas, additional_metric=additional_metric):
+  def train(x, y, advas=None, additional_metric=additional_metric):
+    assert advas is None, 'why would you pass advas here?'
+    advas = AdversarysAssistantSup(1. if reg_strength < 0 else reg_strength)
     G.optim.zero_grad()
     D.optim.zero_grad()
     if reg_strength != 0:

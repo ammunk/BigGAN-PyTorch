@@ -67,7 +67,7 @@ def do_metric(iterations_per_epoch, iteration):
       do_small_metric = iteration <= 1 or (math.log2(iteration) % 1 == 0)
   else:
       do_small_metric = False
-  return do_small_metric or (iteration % 10*iterations_per_epoch == 0), do_large_metric
+  return do_small_metric or (iteration % (10*iterations_per_epoch) == 0), do_large_metric
 
 
 class GeneratorSubstitute():
