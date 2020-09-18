@@ -107,11 +107,8 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
         args = (GD.G.parameters(), GD.D.parameters(), G_loss, D_loss)
         kwargs = {'retain_first_graph': True,
                   'div': float(config['num_G_accumulations'])}
-        if reg_strength == -1:
+        if reg_strength in [-1, -2]:
           advas_loss = advas.normalized_backward(*args, **kwargs)
-        elif reg_strength == -2:
-          advas_loss = advas.advas_normalized_backward(*args, **kwargs)
-
         else:
           advas_loss = advas.backward(GD.D.parameters(), G_loss, D_loss,
                                       div=float(config['num_G_accumulations']))
@@ -120,7 +117,8 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
       G_loss_tracker += G_loss.detach().item()
 
     additional_metric = {'advas_loss': advas_loss_tracker}
-    advas.normalize_grads()
+    advas.normalize_grads(norm_type=(0 if reg_strength not in [-1, -2]
+                          else reg_strength))
 
 
     # Optionally apply modified ortho reg in G
