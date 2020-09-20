@@ -103,7 +103,7 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
         G_loss.backward()
       else:
         D_real = GD.D(x_reg[counter], y_reg[counter])
-        D_loss_real, D_loss_fake = losses.loss_no_hinge_dis(D_fake, D_real)
+        D_loss_real, D_loss_fake = losses.discriminator_loss(D_fake, D_real)
         D_loss = D_loss_real + D_loss_fake
         args = (GD.G.parameters(), GD.D.parameters(), G_loss, D_loss)
         kwargs = {'retain_first_graph': True,
