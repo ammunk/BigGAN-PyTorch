@@ -190,6 +190,7 @@ def run(config):
   else:
     fixed_z, fixed_y = None, None
 
+
   # If parallel, parallelize the GD module
   if config['parallel']:
     GD = nn.DataParallel(GD)
@@ -252,24 +253,25 @@ def run(config):
 
   print('Beginning training at epoch %d...' % state_dict['epoch'])
   # log metrics
-  with torch.no_grad():
-    Gsub = GeneratorSubstitute(G, z_, y_, fixed_z, fixed_y)
-    Gemasub = GeneratorSubstitute(G_ema, z_, y_, fixed_z, fixed_y)
-    #wandbwrapper.fid_score(Gsub, loaders[0].dataset,
-    #                            N=int(1e3), label='small')
-    #wandbwrapper.inception_score(Gsub, N=int(1e3), label='small')
-    wandbwrapper.swd_metric(Gsub, loaders[0].dataset,
+  if state_dict['itr'] == 0:
+    with torch.no_grad():
+        Gsub = GeneratorSubstitute(G, z_, y_, fixed_z, fixed_y)
+        Gemasub = GeneratorSubstitute(G_ema, z_, y_, fixed_z, fixed_y)
+        wandbwrapper.fid_score(Gsub, loaders[0].dataset,
+                            N=int(1e3), label='small')
+        wandbwrapper.inception_score(Gsub, N=int(1e3), label='small')
+        wandbwrapper.swd_metric(Gsub, loaders[0].dataset,
                                 N=int(1e3), label='small')
-    #wandbwrapper.fid_score(Gemasub, loaders[0].dataset,
-    #                            N=int(1e3), label='small-ema')
-    #wandbwrapper.inception_score(Gemasub, N=int(1e3), label='small-ema')
-    #wandbwrapper.swd_metric(Gemasub, loaders[0].dataset,
-    #                            N=int(1e3), label='small-ema')
+        wandbwrapper.fid_score(Gemasub, loaders[0].dataset,
+                            N=int(1e3), label='small-ema')
+        wandbwrapper.inception_score(Gemasub, N=int(1e3), label='small-ema')
+        wandbwrapper.swd_metric(Gemasub, loaders[0].dataset,
+                                N=int(1e3), label='small-ema')
 
-    images, image_names = get_images_names(Gsub, Gemasub,
-                                           loaders[0].dataset)
-    wandbwrapper.add_images(images, image_names, iteration=0)
-    wandbwrapper.log(0, 0.)
+        images, image_names = get_images_names(Gsub, Gemasub,
+                                            loaders[0].dataset)
+        wandbwrapper.add_images(images, image_names, iteration=0)
+        wandbwrapper.log(0, 0.)
 
   # Train for specified number of epochs, although we mostly track G iterations.
   for epoch in range(state_dict['epoch'], config['num_epochs']):
