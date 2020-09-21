@@ -768,7 +768,7 @@ def load_objects(G, D, state_dict, G_ema, loaded_objects):
 def get_objects_to_save(G, D, state_dict, G_ema, fixed_z, fixed_y):
   tmp_state_dict = {key: value for key, value in state_dict.items()
                     if key != "config"}
-  objects_to_save = [G, D, G.optim, D.optim, fixed_z, fixed_y, tmp_state_dict,
+  objects_to_save = [G.state_dict(), D.state_dict(), G.optim.state_dict(), D.optim.state_dict(), fixed_z, fixed_y, tmp_state_dict,
                      state_dict['itr'], state_dict['running_time']]
   objects_name = ['G', 'D', 'G_opt', 'D_opt',
                   'fixed_z', 'fixed_y', 'state_dict', 'iteration',
