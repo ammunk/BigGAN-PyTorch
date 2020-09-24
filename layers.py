@@ -316,8 +316,7 @@ class ccbn(nn.Module):
         out = F.batch_norm(x, self.stored_mean, self.stored_var, None, None,
                           self.training, 0.1, self.eps)
       elif self.norm_style == 'in':
-        out = F.instance_norm(x, self.stored_mean, self.stored_var, None, None,
-                          self.training, 0.1, self.eps)
+        out = F.instance_norm(x)
       elif self.norm_style == 'gn':
         out = groupnorm(x, self.normstyle)
       elif self.norm_style == 'nonorm':
